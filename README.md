@@ -18,11 +18,13 @@
 ### 1. Установка скила
 
 ```bash
-# Через Hermes CLI
-hermes skills install ./SKILL.md
+# Из репозитория GitHub (рекомендуется)
+hermes skills install https://github.com/L-MORIA/hermes-llm-ensemble/raw/main/SKILL.md
 
-# Или через профиль (рекомендуется)
-cp SKILL.md ~/AppData/Local/hermes/profiles/old-laptop/skills/llm-ensemble/SKILL.md
+# Или вручную — скопировать SKILL.md в папку скилов
+# Путь зависит от профиля:
+#   ~/.hermes/skills/llm-ensemble/SKILL.md         # default profile
+#   ~/.hermes/profiles/<имя-профиля>/skills/...     # если используется кастомный профиль
 ```
 
 ### 2. Загрузка в сессию
