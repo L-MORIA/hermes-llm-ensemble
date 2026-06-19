@@ -1,7 +1,7 @@
 ---
 name: llm-ensemble
 description: "Solve one task with multiple independent LLMs, then let an arbiter LLM pick or synthesize the best solution. Parallel delegation, diverse models, arbitration gate."
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 platforms: [windows, linux, macos]
@@ -11,6 +11,7 @@ metadata:
     related_skills: [subagent-driven-development, external-tool-evaluation, plan]
 supporting_files:
   - references/test-results-2026-06-16.md — эмпирические тесты 3 комбинаций на 3 задачах
+  - references/ollama-cloud-models.md — Ollama cloud модели (:cloud) для ensemble, результаты проверки доступности
 ---
 
 # LLM Ensemble — ансамбль моделей с арбитром
@@ -76,13 +77,13 @@ supporting_files:
 
 **Доступные модели:**
 
-| Модель | Настоящее имя | Спецификация |
-|--------|--------------|-------------|
-| `opencode/nemotron-3-ultra-free` | NVIDIA Nemotron-3 Ultra | 550B params, 1M контекст — 🏆 только арбитр |
-| `opencode/deepseek-v4-flash-free` | DeepSeek V4 Flash | Быстрая, дефолтная |
-| `opencode/mimo-v2.5-free` | **Xiaomi MiMo V2.5** | Модель Xiaomi, детальные ответы |
-| `opencode/big-pickle` | Big Pickle | Сильная архитектурная мысль |
-| `opencode/north-mini-code-free` | North Mini Code | Лёгкая, для простых задач |
+| Модель | Настоящее имя | Вес | Спецификация |
+|--------|--------------|------|-------------|
+| `opencode/nemotron-3-ultra-free` | NVIDIA Nemotron-3 Ultra | **550B** | 🏆 арбитр (основной), 1M контекст |
+| `opencode/deepseek-v4-flash-free` | DeepSeek V4 Flash | **284B** | 🔄 арбитр (fallback), агент A |
+| `opencode/big-pickle` | Big Pickle | **70B** | Сильная архитектурная мысль |
+| `opencode/mimo-v2.5-free` | Xiaomi MiMo V2.5 | **7B** | Детальные ответы |
+| `opencode/north-mini-code-free` | North Mini Code | ~1-3B | Лёгкая, для простых задач |
 
 **Тестирование показало (реальные замеры):**
 
@@ -94,15 +95,17 @@ supporting_files:
 
 **Рекомендуемая комбинация (3 модели + арбитр):**
 
-| Роль | Модель | Обоснование |
-|------|--------|-------------|
-| 🏆 **Арбитр** | `opencode/nemotron-3-ultra-free` | 550B, лучшая для оценки и синтеза |
-| 🤖 **Агент A** | `opencode/deepseek-v4-flash-free` | Быстрая, безопасный стиль |
-| 🤖 **Агент B** | `opencode/mimo-v2.5-free` (MiMo V2.5) | Детальные ответы, архитектура |
-| 🤖 **Агент C** | `opencode/big-pickle` | Сильная архитектурная мысль, pipeline |
+| Роль | Модель | Вес | Обоснование |
+|------|--------|------|-------------|
+| 🏆 **Арбитр** | `opencode/nemotron-3-ultra-free` | 550B | Лучшая для оценки и синтеза |
+| 🔄 **Fallback арбитр** | `opencode/deepseek-v4-flash-free` | 284B | Если Ultra недоступен/таймаут |
+| 🤖 **Агент A** | `opencode/deepseek-v4-flash-free` | 284B | Быстрая, безопасный стиль |
+| 🤖 **Агент B** | `opencode/mimo-v2.5-free` (MiMo V2.5) | 7B | Детальные ответы, архитектура |
+| 🤖 **Агент C** | `opencode/big-pickle` | 70B | Сильная архитектурная мысль, pipeline |
 
 > **Для простых задач** (менее 50 слов) — ensemble не запускать, достаточно одного агента.
 > **Для критических задач** — 3 модели + арбитр обеспечивают максимум diversity.
+> **О нестабильности Nemotron-3 Ultra:** на бесплатном tier OpenCode Zen может падать на длинных промптах (>200 слов). В этом случае арбитром автоматически выступает DeepSeek V4 Flash (284B, fallback).
 > Результаты тестов: `references/test-results-2026-06-16.md`
 
 ### Шаг 3 — Запустить параллельное решение
@@ -312,11 +315,12 @@ final = delegate_task(goal=arbiter_task)
    > Эмпирика: на тривиальных задачах diversity = 0%, ensemble не даёт выгоды (см. `references/test-results-2026-06-16.md`)
 2. **Зависимость от API** — если бесплатные модели недоступны, ensemble не сработает
 3. **Одинаковые модели** — если все агенты используют одну модель, разнообразия решений не будет
-4. **Арбитр — та же модель** — может иметь те же слепые пятна, что и агенты. Лучше если арбитр — другая модель
+4. **Арбитр — та же модель** — может иметь те же слепые пятна, что и агенты. Лучше если арбитр — другая модель.
+   > Fallback DeepSeek — это компромисс: он же Agent A, но 284B против 7B MiMo — достаточный отрыв. DeepSeek самокритичен (проверено).
 5. **CPU-only ноутбук** — local модели медленные. Использовать только в паре с быстрыми API-моделями
 6. **Безопасность важнее количества** — если 2 агента дали безопасное решение, а 3-ий — опасное, арбитр должен отсеять опасное
-7. **Проверено по каталогу** — аналогов в agentskills.io и GitHub на момент создания не найдено
-8. **Big Pickle** — `opencode/big-pickle` доступна через OpenCode Zen. Использовать как агента для diversity
+7. **Nemotron-3 Ultra нестабилен** — на длинных промптах (>200 слов) через OpenCode Zen может упасть. Использовать fallback DeepSeek.
+8. **Проверять модели через правильный API** — Ollama cloud модели работают через суффикс `:cloud` и локальный API (port 11434), не через `ollama run`.
 
 ## Verification Checklist
 
