@@ -1,7 +1,7 @@
 ---
 name: llm-ensemble
 description: "Solve one task with multiple independent LLMs, then let an arbiter LLM pick or synthesize the best solution. Parallel delegation, diverse models, arbitration gate."
-version: 1.1.0
+version: 1.1.1
 author: Hermes Agent
 license: MIT
 platforms: [windows, linux, macos]
@@ -11,6 +11,7 @@ metadata:
     related_skills: [subagent-driven-development, external-tool-evaluation, plan]
 supporting_files:
   - references/test-results-2026-06-16.md — эмпирические тесты 3 комбинаций на 3 задачах
+  - references/test-results-2026-06-19.md — тесты llm-ensemble (OpenCode Zen) vs ensemble-ollama-cloud (Ollama Cloud): is_palindrome + Sliding Window Rate Limiter
   - references/ollama-cloud-models.md — Ollama cloud модели (:cloud) для ensemble, результаты проверки доступности
 ---
 
@@ -90,7 +91,7 @@ supporting_files:
 | Конфигурация | Diversity | Время | Вердикт |
 |-------------|-----------|-------|---------|
 | 🆓 **2 модели** | Низкий для простых задач | ~2 мин | Для базовых задач |
-| 🚀 **3 модели** 🔥 | **Максимальный** | ~3.5 мин | ⭐ **РЕКОМЕНДУЕТСЯ** |
+| 🚀 **3 модели** 🔥 | **Максимальный** | ~2.5-3.5 мин | ⭐ **РЕКОМЕНДУЕТСЯ** |
 | 4 модели | Есть diminishing returns | ~5 мин | Избыточно |
 
 **Рекомендуемая комбинация (3 модели + арбитр):**
@@ -290,7 +291,7 @@ final = delegate_task(goal=arbiter_task)
      ↓
 1 арбитр → ЗАПУСКАЕТСЯ ПОСЛЕ (sequential)
      ↓
-Итог: ~3-4 мин
+| Итог: ~2-3 мин
 ```
 
 **Почему не 4 агента:**
@@ -306,7 +307,7 @@ final = delegate_task(goal=arbiter_task)
 | Конфигурация | Параллельно | Время |
 |-------------|------------|-------|
 | 2 агента + арбитр | 2 сразу | ~2-3 мин |
-| **3 агента + арбитр** 🔥 | **3 сразу** | **~3-4 мин ⭐** |
+| **3 агента + арбитр** 🔥 | **3 сразу** | **~2.5-3.5 мин ⭐** |
 | 4 агента + арбитр | 3+1 (без прироста) | ~5 мин |
 
 ## Common Pitfalls
@@ -315,6 +316,14 @@ final = delegate_task(goal=arbiter_task)
    > Эмпирика: на тривиальных задачах diversity = 0%, ensemble не даёт выгоды (см. `references/test-results-2026-06-16.md`)
 2. **Зависимость от API** — если бесплатные модели недоступны, ensemble не сработает
 3. **Одинаковые модели** — если все агенты используют одну модель, разнообразия решений не будет
+   > **⚠️ Важно:** `delegate_task` НЕ даёт diversity моделей — все subagent'ы наследуют модель родительского Hermes. Если ваша модель Hermes — DeepSeek, то все 3 агента будут DeepSeek, даже если вы передали разные модели в `tasks[]`. Для настоящего diversity используйте **прямой запуск через OpenCode CLI**:
+   > ```bash
+   > opencode run 'задача' --model opencode/deepseek-v4-flash-free &
+   > opencode run 'задача' --model opencode/mimo-v2.5-free &
+   > opencode run 'задача' --model opencode/big-pickle &
+   > wait  # дождаться всех
+   > ```
+   > См. тест в `references/test-results-2026-06-19.md` — там наглядно показано: при `delegate_task` все 3 subagent'а идут через DeepSeek, а при прямом `opencode run --model` — разные модели.
 4. **Арбитр — та же модель** — может иметь те же слепые пятна, что и агенты. Лучше если арбитр — другая модель.
    > Fallback DeepSeek — это компромисс: он же Agent A, но 284B против 7B MiMo — достаточный отрыв. DeepSeek самокритичен (проверено).
 5. **CPU-only ноутбук** — local модели медленные. Использовать только в паре с быстрыми API-моделями
